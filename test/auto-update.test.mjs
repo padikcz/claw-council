@@ -12,13 +12,27 @@ test("uses the moving stable Git source supported by OpenClaw", () => {
   assert.equal(pluginSource, "git:github.com/padikcz/claw-council@plugin-stable");
 });
 
-test("updater always restores an active Gateway and never auto-accepts new capabilities", () => {
-  const script = renderUpdater({ openclawBinary: "/opt/openclaw/bin/openclaw" });
+test("updater restores an active Gateway and keeps routine updates capability-gated", () => {
+  const script = renderUpdater({
+    openclawBinary: "/opt/openclaw/bin/openclaw",
+    bootstrapMarker: "/srv/example/bootstrap-stable-source",
+  });
   assert.match(script, /systemctl --user stop/);
   assert.match(script, /plugins update claw-council/);
   assert.match(script, /systemctl --user start/);
   assert.match(script, /plugins inspect claw-council --runtime --json/);
-  assert.doesNotMatch(script, /accept-capabilities/);
+  assert.match(script, /if \[ -f "\$bootstrap_marker" \]/);
+  assert.match(script, /plugins install 'git:github\.com\/padikcz\/claw-council@plugin-stable' --force --accept-capabilities --no-enable/);
+  assert.match(script, /rm -f "\$bootstrap_marker"/);
+});
+
+test("capability acceptance is limited to the explicit one-time source migration", () => {
+  const script = renderUpdater({
+    openclawBinary: "/opt/openclaw/bin/openclaw",
+    bootstrapMarker: "/srv/example/bootstrap-stable-source",
+  });
+  assert.equal(script.match(/accept-capabilities/g)?.length, 1);
+  assert.doesNotMatch(script.match(/else\n([\s\S]*?)\nfi/)?.[1] ?? "", /accept-capabilities/);
 });
 
 test("timer is persistent, randomized, and receives the protected credential environment", () => {

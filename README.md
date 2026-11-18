@@ -63,6 +63,11 @@ git pull --ff-only
 npm run enable:auto-update
 ```
 
+This command only writes and enables the updater units while the Gateway is
+running. If the existing installation does not yet track `plugin-stable`, the
+first timer run performs that one-time source migration after stopping the
+Gateway. Later runs never auto-accept expanded capabilities.
+
 Inspect or disable it with:
 
 ```bash

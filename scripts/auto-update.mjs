@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -28,16 +28,18 @@ export function autoUpdatePaths(home = homedir()) {
   const unitDirectory = join(home, ".config", "systemd", "user");
   return {
     script: join(home, ".local", "lib", "claw-council", "update-plugin"),
+    bootstrapMarker: join(home, ".local", "state", "claw-council", "bootstrap-stable-source"),
     service: join(unitDirectory, "claw-council-update.service"),
     timer: join(unitDirectory, "claw-council-update.timer"),
   };
 }
 
-export function renderUpdater({ openclawBinary }) {
+export function renderUpdater({ openclawBinary, bootstrapMarker }) {
   return `#!/bin/sh
 set -eu
 
 openclaw_bin=${shellQuote(openclawBinary)}
+bootstrap_marker=${shellQuote(bootstrapMarker)}
 gateway_unit=openclaw-gateway.service
 gateway_was_active=0
 
@@ -56,7 +58,12 @@ if [ "$gateway_was_active" -eq 1 ]; then
   systemctl --user stop "$gateway_unit"
 fi
 
-"$openclaw_bin" plugins update claw-council
+if [ -f "$bootstrap_marker" ]; then
+  "$openclaw_bin" plugins install ${shellQuote(pluginSource)} --force --accept-capabilities --no-enable
+  rm -f "$bootstrap_marker"
+else
+  "$openclaw_bin" plugins update claw-council
+fi
 restore_gateway
 gateway_was_active=0
 trap - EXIT HUP INT TERM
@@ -113,20 +120,27 @@ async function assertAbsent(path) {
 export async function installAutoUpdate({
   openclawBinary,
   environmentFile,
+  bootstrapSource = false,
   replace = false,
   enable = true,
   home = homedir(),
 }) {
   const paths = autoUpdatePaths(home);
   if (!replace) {
-    await Promise.all(Object.values(paths).map(assertAbsent));
+    await Promise.all([paths.script, paths.service, paths.timer].map(assertAbsent));
   }
   await mkdir(dirname(paths.script), { recursive: true, mode: 0o700 });
   await mkdir(dirname(paths.service), { recursive: true, mode: 0o700 });
-  await writeFile(paths.script, renderUpdater({ openclawBinary }), { mode: 0o700 });
+  await mkdir(dirname(paths.bootstrapMarker), { recursive: true, mode: 0o700 });
+  await writeFile(paths.script, renderUpdater({ openclawBinary, bootstrapMarker: paths.bootstrapMarker }), { mode: 0o700 });
   await chmod(paths.script, 0o700);
   await writeFile(paths.service, renderService({ environmentFile, updaterPath: paths.script }), { mode: 0o600 });
   await writeFile(paths.timer, renderTimer(), { mode: 0o600 });
+  if (bootstrapSource) {
+    await writeFile(paths.bootstrapMarker, `${pluginSource}\n`, { mode: 0o600 });
+  } else {
+    await rm(paths.bootstrapMarker, { force: true });
+  }
   command("systemctl", ["--user", "daemon-reload"], { quiet: true });
   if (enable) {
     command("systemctl", ["--user", "enable", "--now", "claw-council-update.timer"], { quiet: true });
@@ -140,8 +154,9 @@ async function main() {
   if (!openclawBinary.startsWith("/")) throw new Error("Could not resolve the OpenClaw executable path");
   const environmentFile = join(homedir(), ".config", "openclaw", "claw-council.env");
   await stat(environmentFile);
-  command(openclawBinary, ["plugins", "install", pluginSource, "--force", "--accept-capabilities", "--no-enable"]);
-  const paths = await installAutoUpdate({ openclawBinary, environmentFile, replace: true });
+  const inspection = JSON.parse(command(openclawBinary, ["plugins", "inspect", "claw-council", "--json"], { quiet: true }));
+  const bootstrapSource = inspection?.install?.spec !== pluginSource;
+  const paths = await installAutoUpdate({ openclawBinary, environmentFile, bootstrapSource, replace: true });
   process.stdout.write(`ClawCouncil now follows the reviewed stable plugin branch. Daily update timer installed at ${paths.timer}.\n`);
 }
 
