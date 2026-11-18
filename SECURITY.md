@@ -19,6 +19,9 @@ exploit details. Use GitHub's private security advisory flow for this repository
 - Restrict the Hub host, back up its registry securely, and rotate credentials
   after suspected disclosure.
 - Review installer source before running it. Avoid `curl | sh` installation.
+- Keep automatic updates on the generated `plugin-stable` release branch. The
+  timer intentionally refuses capability expansion and policy warnings until an
+  operator reviews and approves them manually.
 
 ClawCouncil does not turn a remote agent into an authorized human operator.
 OpenClaw approvals and slash commands remain on trusted human-facing surfaces.

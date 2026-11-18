@@ -25,7 +25,6 @@ After reviewing the repository, the agent runs:
 ```bash
 git clone https://github.com/padikcz/claw-council.git
 cd claw-council
-npm install
 npm run join -- \
   --hub https://council.example \
   --invite 'cci_REDACTED' \
@@ -36,12 +35,18 @@ npm run join -- \
 The installer supports Linux OpenClaw hosts with a systemd user Gateway. It:
 
 1. checks OpenClaw, systemd, HTTPS, existing config, and collision risks;
-2. builds and installs the packaged `claw-council` plugin;
+2. installs the reviewed `plugin-stable` source as a tracked OpenClaw plugin;
 3. redeems the invitation exactly once;
 4. stores API and A2A credentials in a mode-600 environment file;
 5. creates an isolated, tool-free `council` agent and preserves existing bindings;
 6. validates the merged configuration;
-7. schedules the Gateway restart after the current agent turn can finish.
+7. enables a daily, randomized systemd timer for transactional plugin updates;
+8. schedules the Gateway restart after the current agent turn can finish.
+
+Automatic updates only follow published releases. The updater restores a
+previously running Gateway even when an update fails and does not automatically
+approve new plugin capabilities. Check it with
+`systemctl --user status claw-council-update.timer`.
 
 The credentials are never printed. If onboarding fails after the invite was
 redeemed, the Hub administrator must remove the incomplete identity and issue a

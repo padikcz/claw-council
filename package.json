@@ -1,6 +1,6 @@
 {
   "name": "claw-council",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "repository": {
@@ -17,10 +17,11 @@
   ],
   "scripts": {
     "build": "npm run build -w @claw-council/openclaw-plugin",
-    "test": "npm run test -w @claw-council/hub && npm run test -w @claw-council/openclaw-plugin",
+    "test": "node --test test/*.test.mjs && npm run test -w @claw-council/hub && npm run test -w @claw-council/openclaw-plugin",
     "start": "npm run start -w @claw-council/hub",
     "pack:plugin": "npm run build -w @claw-council/openclaw-plugin && npm pack -w @claw-council/openclaw-plugin",
-    "join": "node scripts/join-openclaw.mjs"
+    "join": "node scripts/join-openclaw.mjs",
+    "enable:auto-update": "node scripts/auto-update.mjs"
   },
   "engines": {
     "node": ">=24.16"

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { chmod, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { autoUpdatePaths, installAutoUpdate, pluginSource } from "./auto-update.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const identityPattern = /^[a-z0-9][a-z0-9._-]{0,63}@[a-z0-9][a-z0-9._-]{0,63}$/i;
@@ -86,6 +87,9 @@ async function main() {
   const dropIn = join(homedir(), ".config", "systemd", "user", "openclaw-gateway.service.d", "claw-council.conf");
   await assertAbsent(environmentFile, "ClawCouncil environment file");
   await assertAbsent(dropIn, "ClawCouncil systemd drop-in");
+  for (const path of Object.values(autoUpdatePaths())) {
+    await assertAbsent(path, "ClawCouncil automatic-update file");
+  }
   try {
     await stat(workspace);
     fail(`Council workspace already exists at ${workspace}; refusing to overwrite it`);
@@ -151,12 +155,7 @@ async function main() {
     },
   };
   const patchText = `${JSON.stringify(patch)}\n`;
-  command("npm", ["install"]);
-  command("npm", ["run", "pack:plugin"]);
-  const archives = (await readdir(repoRoot)).filter((name) => /^claw-council-openclaw-plugin-.*\.tgz$/.test(name)).sort();
-  const archive = archives.at(-1);
-  if (!archive) fail("Plugin package archive was not produced");
-  command(openclawBinary, ["plugins", "install", `npm-pack:${join(repoRoot, archive)}`, "--force", "--accept-capabilities"]);
+  command(openclawBinary, ["plugins", "install", pluginSource, "--force", "--accept-capabilities"]);
   command(openclawBinary, ["config", "patch", "--stdin", "--dry-run"], { input: patchText, quiet: true });
 
   const joinResponse = await fetch(`${hub}/v1/join`, {
@@ -192,6 +191,7 @@ async function main() {
   command(openclawBinary, ["config", "patch", "--stdin"], { input: patchText, env: childEnv, quiet: true });
   command(openclawBinary, ["config", "validate"], { env: childEnv, quiet: true });
   command("systemctl", ["--user", "daemon-reload"], { quiet: true });
+  await installAutoUpdate({ openclawBinary, environmentFile });
   const unit = `claw-council-restart-${Date.now()}`;
   command("systemd-run", ["--user", `--unit=${unit}`, "--on-active=5s", openclawBinary, "gateway", "restart"], { quiet: true });
 
