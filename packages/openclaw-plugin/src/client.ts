@@ -4,6 +4,7 @@ export type CouncilConfig = {
   timeoutMs?: number;
   localAgentId?: string;
   pollIntervalMs?: number;
+  recordOutboundChats?: boolean;
 };
 
 export type CouncilResponse = Record<string, unknown>;

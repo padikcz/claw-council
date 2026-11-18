@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { CouncilClient, type CouncilConfig } from "./client.js";
+import { OutboundChatRecorder } from "./outbound-chat.js";
 import { CouncilPullService } from "./worker.js";
 
 type Params = {
@@ -18,6 +19,17 @@ export default definePluginEntry({
   register(api) {
     const config = api.pluginConfig as CouncilConfig;
     const client = new CouncilClient(config);
+    const outboundRecorder = config.recordOutboundChats
+      ? new OutboundChatRecorder(
+          api.runtime.gateway,
+          api.runtime.state.openKeyedStoreV2({
+            namespace: "outbound-chats",
+            maxEntries: 2_000,
+          }),
+          api.logger,
+          config,
+        )
+      : undefined;
 
     api.registerTool({
       name: "council",
@@ -42,10 +54,12 @@ export default definePluginEntry({
         } else if (params.action === "status") {
           if (!params.messageId) throw new Error("messageId is required for action=status");
           details = await client.status(params.messageId);
+          await outboundRecorder?.recordStatus(details, params.messageId);
         } else {
           if (!params.whom) throw new Error("whom is required for action=ask");
           if (!params.input?.trim()) throw new Error("input is required for action=ask");
           details = await client.ask(params.whom, params.input, params.conversationId);
+          await outboundRecorder?.recordAsk(details, params.whom, params.input);
         }
         return {
           content: [{ type: "text", text: JSON.stringify(details) }],

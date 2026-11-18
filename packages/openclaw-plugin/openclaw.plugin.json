@@ -46,6 +46,10 @@
         "minimum": 500,
         "maximum": 60000,
         "default": 2000
+      },
+      "recordOutboundChats": {
+        "type": "boolean",
+        "default": false
       }
     }
   },
@@ -67,6 +71,11 @@
     },
     "pollIntervalMs": {
       "label": "Inbox polling interval (ms)",
+      "advanced": true
+    },
+    "recordOutboundChats": {
+      "label": "Record outbound chats",
+      "help": "Create a visible local chat for each outbound ClawCouncil request. Disabled by default.",
       "advanced": true
     }
   }
