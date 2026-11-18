@@ -12,6 +12,14 @@ test("uses the moving stable Git source supported by OpenClaw", () => {
   assert.equal(pluginSource, "git:github.com/padikcz/claw-council@plugin-stable");
 });
 
+test("auto-update source does not resolve OpenClaw from npm's project-local PATH", async () => {
+  const source = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../scripts/auto-update.mjs", import.meta.url), "utf8"),
+  );
+  assert.match(source, /npm", \["prefix", "--global"\]/);
+  assert.doesNotMatch(source, /command -v openclaw/);
+});
+
 test("updater restores an active Gateway and keeps routine updates capability-gated", () => {
   const script = renderUpdater({
     openclawBinary: "/opt/openclaw/bin/openclaw",

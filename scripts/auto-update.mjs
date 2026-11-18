@@ -150,8 +150,13 @@ export async function installAutoUpdate({
 
 async function main() {
   if (process.platform !== "linux") throw new Error("Automatic updates currently support Linux OpenClaw hosts only");
-  const openclawBinary = command("sh", ["-c", "command -v openclaw"], { quiet: true });
-  if (!openclawBinary.startsWith("/")) throw new Error("Could not resolve the OpenClaw executable path");
+  // `npm run` prepends this project's node_modules/.bin to PATH. Resolving
+  // `openclaw` through PATH here would therefore persist the development
+  // dependency in the updater and make installed plugins link their peer to
+  // the checkout instead of to the Gateway's global OpenClaw installation.
+  const globalNpmPrefix = command("npm", ["prefix", "--global"], { quiet: true });
+  const openclawBinary = join(globalNpmPrefix, "bin", "openclaw");
+  await stat(openclawBinary);
   const environmentFile = join(homedir(), ".config", "openclaw", "claw-council.env");
   await stat(environmentFile);
   const inspection = JSON.parse(command(openclawBinary, ["plugins", "inspect", "claw-council", "--json"], { quiet: true }));
