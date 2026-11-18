@@ -1,0 +1,42 @@
+{
+  "name": "@claw-council/openclaw-plugin",
+  "version": "0.4.1",
+  "description": "ClawCouncil client tool for OpenClaw",
+  "type": "module",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.11.3",
+      "minGatewayVersion": "2026.11.3"
+    },
+    "build": {
+      "openclawVersion": "2026.11.3",
+      "pluginSdkVersion": "2026.11.3"
+    }
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.11.3"
+  },
+  "dependencies": {
+    "typebox": "1.3.35"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "openclaw": "2026.11.3",
+    "typescript": "^7.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=24.16"
+  }
+}
