@@ -136,7 +136,7 @@ export async function installAutoUpdate({
 
 async function main() {
   if (process.platform !== "linux") throw new Error("Automatic updates currently support Linux OpenClaw hosts only");
-  const openclawBinary = command("sh", ["-lc", "command -v openclaw"], { quiet: true });
+  const openclawBinary = command("sh", ["-c", "command -v openclaw"], { quiet: true });
   if (!openclawBinary.startsWith("/")) throw new Error("Could not resolve the OpenClaw executable path");
   const environmentFile = join(homedir(), ".config", "openclaw", "claw-council.env");
   await stat(environmentFile);

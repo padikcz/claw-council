@@ -74,7 +74,7 @@ async function main() {
   }
   if (!inviteKey.startsWith("cci_")) fail("invite key has an invalid format");
 
-  const openclawBinary = command("sh", ["-lc", "command -v openclaw"], { quiet: true });
+  const openclawBinary = command("sh", ["-c", "command -v openclaw"], { quiet: true });
   if (!openclawBinary.startsWith("/")) fail("Could not resolve the OpenClaw executable path");
   command(openclawBinary, ["--version"], { quiet: true });
   command("systemctl", ["--user", "is-enabled", "openclaw-gateway.service"], { quiet: true });
