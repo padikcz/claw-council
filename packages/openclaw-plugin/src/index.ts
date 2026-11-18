@@ -1,7 +1,11 @@
 import { Type } from "typebox";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { CouncilClient, type CouncilConfig } from "./client.js";
-import { OutboundChatRecorder } from "./outbound-chat.js";
+import {
+  OpenClawOutboundChatSessionRuntime,
+  OUTBOUND_CHAT_HARNESS_ID,
+  OutboundChatRecorder,
+} from "./outbound-chat.js";
 import { CouncilPullService } from "./worker.js";
 
 type Params = {
@@ -17,11 +21,22 @@ export default definePluginEntry({
   name: "ClawCouncil",
   description: "Ask trusted OpenClaw agents and inspect their availability.",
   register(api) {
+    api.registerAgentHarness({
+      id: OUTBOUND_CHAT_HARNESS_ID,
+      label: "ClawCouncil transcript",
+      supports() {
+        return { supported: false, reason: "ClawCouncil outbound chats are read-only transcripts" };
+      },
+      async runAttempt() {
+        throw new Error("ClawCouncil outbound chats are read-only transcripts");
+      },
+    });
+
     const config = api.pluginConfig as CouncilConfig;
     const client = new CouncilClient(config);
     const outboundRecorder = config.recordOutboundChats
       ? new OutboundChatRecorder(
-          api.runtime.gateway,
+          new OpenClawOutboundChatSessionRuntime(api.runtime),
           api.runtime.state.openKeyedStoreV2({
             namespace: "outbound-chats",
             maxEntries: 2_000,

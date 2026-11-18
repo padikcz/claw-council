@@ -1,9 +1,115 @@
 import { createHash } from "node:crypto";
+import {
+  appendAssistantMirrorMessageByIdentity,
+  appendSessionTranscriptMessageByIdentity,
+} from "openclaw/plugin-sdk/session-transcript-runtime";
 import type { CouncilConfig, CouncilResponse } from "./client.js";
 
-type GatewayRuntime = {
-  request<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
+export const OUTBOUND_CHAT_HARNESS_ID = "claw-council-transcript";
+
+type SessionEntry = {
+  sessionId?: string;
 };
+
+type PluginRuntime = {
+  config: {
+    current(options: { clone: true }): unknown;
+  };
+  agent: {
+    session: {
+      getSessionEntryAsync(params: { agentId: string; sessionKey: string }): Promise<SessionEntry | undefined>;
+      createSessionEntry(params: Record<string, unknown>): Promise<{ sessionId: string }>;
+    };
+  };
+};
+
+type TranscriptRuntime = {
+  appendUser(params: Record<string, unknown>): Promise<unknown>;
+  appendAssistant(params: Record<string, unknown>): Promise<{ ok: boolean; reason?: string }>;
+};
+
+export type OutboundChatSessionRuntime = {
+  ensureSession(params: { agentId: string; sessionKey: string; displayName: string }): Promise<void>;
+  appendUser(params: { agentId: string; sessionKey: string; text: string; idempotencyKey: string }): Promise<void>;
+  appendAssistant(params: { agentId: string; sessionKey: string; text: string; idempotencyKey: string }): Promise<void>;
+};
+
+export class OpenClawOutboundChatSessionRuntime implements OutboundChatSessionRuntime {
+  constructor(
+    private readonly runtime: PluginRuntime,
+    private readonly transcript: TranscriptRuntime = {
+      appendUser: appendSessionTranscriptMessageByIdentity,
+      appendAssistant: appendAssistantMirrorMessageByIdentity,
+    },
+  ) {}
+
+  async ensureSession(params: { agentId: string; sessionKey: string; displayName: string }): Promise<void> {
+    if (await this.getSessionId(params.agentId, params.sessionKey)) return;
+    const cfg = this.runtime.config.current({ clone: true });
+    try {
+      await this.runtime.agent.session.createSessionEntry({
+        cfg,
+        key: params.sessionKey,
+        agentId: params.agentId,
+        displayName: params.displayName,
+        initialEntry: {
+          agentHarnessId: OUTBOUND_CHAT_HARNESS_ID,
+          modelSelectionLocked: true,
+          pluginExtensions: {
+            "claw-council": { kind: "outbound-chat" },
+          },
+        },
+      });
+    } catch (error) {
+      if (await this.getSessionId(params.agentId, params.sessionKey)) return;
+      throw error;
+    }
+  }
+
+  async appendUser(params: { agentId: string; sessionKey: string; text: string; idempotencyKey: string }): Promise<void> {
+    const sessionId = await this.requireSessionId(params.agentId, params.sessionKey);
+    await this.transcript.appendUser({
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      sessionId,
+      config: this.runtime.config.current({ clone: true }),
+      message: {
+        role: "user",
+        content: [{ type: "text", text: params.text }],
+        timestamp: Date.now(),
+        idempotencyKey: params.idempotencyKey,
+      },
+      idempotencyLookup: "scan",
+      updateMode: "inline",
+      useRawWhenLinear: true,
+    });
+  }
+
+  async appendAssistant(params: { agentId: string; sessionKey: string; text: string; idempotencyKey: string }): Promise<void> {
+    const sessionId = await this.requireSessionId(params.agentId, params.sessionKey);
+    const result = await this.transcript.appendAssistant({
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      sessionId,
+      config: this.runtime.config.current({ clone: true }),
+      text: params.text,
+      idempotencyKey: params.idempotencyKey,
+      updateMode: "inline",
+    });
+    if (!result.ok) throw new Error(result.reason ?? "assistant transcript append failed");
+  }
+
+  private async getSessionId(agentId: string, sessionKey: string): Promise<string | undefined> {
+    const entry = await this.runtime.agent.session.getSessionEntryAsync({ agentId, sessionKey });
+    return typeof entry?.sessionId === "string" && entry.sessionId.length > 0 ? entry.sessionId : undefined;
+  }
+
+  private async requireSessionId(agentId: string, sessionKey: string): Promise<string> {
+    const sessionId = await this.getSessionId(agentId, sessionKey);
+    if (!sessionId) throw new Error(`missing outbound chat session: ${sessionKey}`);
+    return sessionId;
+  }
+}
 
 type RecorderState = {
   sessionKey: string;
@@ -33,7 +139,7 @@ export class OutboundChatRecorder {
   private readonly agentId: string;
 
   constructor(
-    private readonly gateway: GatewayRuntime,
+    private readonly sessions: OutboundChatSessionRuntime,
     private readonly store: RecorderStore,
     private readonly logger: RecorderLogger,
     config: CouncilConfig,
@@ -48,16 +154,16 @@ export class OutboundChatRecorder {
       const sessionKey = outboundSessionKey(this.agentId, messageId);
       const existing = await this.store.lookup(messageId);
       if (!existing) {
-        await this.gateway.request("sessions.create", {
-          key: sessionKey,
+        await this.sessions.ensureSession({
+          sessionKey,
           agentId: this.agentId,
           displayName: `ClawCouncil → ${whom}`,
         });
-        await this.gateway.request("chat.inject", {
+        await this.sessions.appendUser({
           sessionKey,
           agentId: this.agentId,
-          label: "ClawCouncil · odesláno",
-          message: `**Odesláno agentovi \`${whom}\`:**\n\n${input}`,
+          text: `**Odesláno agentovi \`${whom}\`:**\n\n${input}`,
+          idempotencyKey: `clawcouncil:${messageId}:ask`,
         });
         await this.store.register(messageId, { sessionKey, whom, finalRecorded: false });
       }
@@ -82,11 +188,11 @@ export class OutboundChatRecorder {
     const state = await this.store.lookup(messageId);
     if (!state || state.finalRecorded) return;
     const sender = stringField(details.from) ?? state.whom;
-    await this.gateway.request("chat.inject", {
+    await this.sessions.appendAssistant({
       sessionKey: state.sessionKey,
       agentId: this.agentId,
-      label: `ClawCouncil · ${status}`,
-      message: `**Odpověď od \`${sender}\`:**\n\n${output}`,
+      text: `**ClawCouncil · ${status}**\n\n**Odpověď od \`${sender}\`:**\n\n${output}`,
+      idempotencyKey: `clawcouncil:${messageId}:final`,
     });
     await this.store.register(messageId, { ...state, finalRecorded: true });
   }
