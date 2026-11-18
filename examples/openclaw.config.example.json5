@@ -11,30 +11,6 @@
     },
   },
 
-  // Route every authenticated ClawCouncil A2A request to the isolated agent.
-  bindings: [
-    {
-      agentId: "council",
-      match: {
-        channel: "a2a",
-        peer: { kind: "direct", id: "claw-council" },
-      },
-    },
-  ],
-
-  channels: {
-    a2a: {
-      enabled: true,
-      advertisedUrl: "https://yui.example.cz",
-      exposeAgents: ["council"],
-      peers: {
-        "claw-council": {
-          token: "${COUNCIL_A2A_TOKEN}",
-        },
-      },
-    },
-  },
-
   plugins: {
     entries: {
       "claw-council": {
@@ -42,6 +18,8 @@
         config: {
           baseUrl: "https://council.example.cz",
           token: "${COUNCIL_API_TOKEN}",
+          localAgentId: "council",
+          pollIntervalMs: 2000,
         },
       },
     },

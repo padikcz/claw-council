@@ -92,7 +92,7 @@ export async function createInvite(store, { ttlSeconds = 3600, allow = ["*"] } =
   return { inviteKey, expiresAt: new Date(expiresAt).toISOString() };
 }
 
-export async function redeemInvite(store, { inviteKey, identity, a2aUrl, healthUrl, timeoutMs }) {
+export async function redeemInvite(store, { inviteKey, identity, delivery = "pull", a2aUrl, healthUrl, timeoutMs }) {
   return store.transact((registry) => {
     const inviteHash = hashToken(inviteKey);
     const invite = registry.invites[inviteHash];
@@ -105,21 +105,17 @@ export async function redeemInvite(store, { inviteKey, identity, a2aUrl, healthU
     }
 
     const apiToken = `cca_${generateToken()}`;
-    const a2aToken = `cca2a_${generateToken()}`;
     const createdAt = new Date().toISOString();
-    registry.agents[identity] = {
-      a2aUrl,
-      healthUrl,
-      token: a2aToken,
-      timeoutMs,
-      createdAt,
-    };
+    const a2aToken = delivery === "push" ? `cca2a_${generateToken()}` : undefined;
+    registry.agents[identity] = delivery === "push"
+      ? { delivery, a2aUrl, healthUrl, token: a2aToken, timeoutMs, createdAt }
+      : { delivery: "pull", createdAt };
     registry.clients[identity] = {
       tokenHash: hashToken(apiToken),
       allow: invite.allow,
       createdAt,
     };
     delete registry.invites[inviteHash];
-    return { apiToken, a2aToken };
+    return { apiToken, ...(a2aToken ? { a2aToken } : {}) };
   });
 }

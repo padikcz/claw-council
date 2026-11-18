@@ -71,6 +71,8 @@ function contextIdFor(clientIdentity, conversationId) {
 
 export function createCouncilServer(config) {
   const pending = new Map();
+  const pullMessages = new Map();
+  const pullPresence = new Map();
   const registry = new RegistryStore(config.registryPath);
   const joinAttempts = new Map();
 
@@ -112,6 +114,7 @@ export function createCouncilServer(config) {
         const inviteKey = body?.invite_key;
         const identity = body?.identity;
         const a2aUrlValue = body?.a2a_url;
+        const delivery = a2aUrlValue ? "push" : "pull";
         if (typeof inviteKey !== "string" || !inviteKey.startsWith("cci_") || inviteKey.length > 100) {
           sendError(response, 401, "invalid_invite", "Invite key is invalid or expired");
           return;
@@ -120,20 +123,24 @@ export function createCouncilServer(config) {
           sendError(response, 400, "invalid_identity", "identity must look like agent@host");
           return;
         }
-        let a2aUrl;
-        try {
-          a2aUrl = new URL(a2aUrlValue);
-          if (a2aUrl.protocol !== "https:" && !(config.allowInsecureJoinUrls && a2aUrl.protocol === "http:")) throw new Error();
-        } catch {
-          sendError(response, 400, "invalid_a2a_url", "a2a_url must be a valid HTTPS URL");
-          return;
+        let normalizedA2aUrl;
+        let healthUrl;
+        if (delivery === "push") {
+          try {
+            const a2aUrl = new URL(a2aUrlValue);
+            if (a2aUrl.protocol !== "https:" && !(config.allowInsecureJoinUrls && a2aUrl.protocol === "http:")) throw new Error();
+            normalizedA2aUrl = a2aUrl.toString();
+            healthUrl = new URL("/.well-known/agent-card.json", normalizedA2aUrl).toString();
+          } catch {
+            sendError(response, 400, "invalid_a2a_url", "a2a_url must be a valid HTTPS URL");
+            return;
+          }
         }
-        const normalizedA2aUrl = a2aUrl.toString();
-        const healthUrl = new URL("/.well-known/agent-card.json", normalizedA2aUrl).toString();
         try {
           const credentials = await redeemInvite(registry, {
             inviteKey,
             identity,
+            delivery,
             a2aUrl: normalizedA2aUrl,
             healthUrl,
             timeoutMs: config.requestTimeoutMs,
@@ -142,8 +149,9 @@ export function createCouncilServer(config) {
             identity,
             hub_url: config.publicBaseUrl,
             peer_name: "claw-council",
+            delivery,
             api_token: credentials.apiToken,
-            a2a_token: credentials.a2aToken,
+            ...(credentials.a2aToken ? { a2a_token: credentials.a2aToken } : {}),
           });
         } catch (error) {
           if (error instanceof Error && error.message === "identity_exists") {
@@ -164,12 +172,78 @@ export function createCouncilServer(config) {
       if (request.method === "GET" && url.pathname === "/v1/agents") {
         const { agents } = await directory(config, registry);
         const entries = await Promise.all(
-          [...agents.values()].map(async (agent) => ({
-            id: agent.identity,
-            ...(await probeAgent(agent, config.onlineTimeoutMs)),
-          })),
+          [...agents.values()].map(async (agent) => {
+            if (agent.delivery === "pull") {
+              const lastSeenAt = pullPresence.get(agent.identity);
+              return {
+                id: agent.identity,
+                online: Boolean(lastSeenAt && Date.now() - lastSeenAt < 30_000),
+                ...(lastSeenAt ? { lastSeenAt: new Date(lastSeenAt).toISOString() } : {}),
+              };
+            }
+            return { id: agent.identity, ...(await probeAgent(agent, config.onlineTimeoutMs)) };
+          }),
         );
         sendJson(response, 200, { agents: entries });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/inbox/next") {
+        pullPresence.set(client.identity, Date.now());
+        const now = Date.now();
+        const item = [...pullMessages.values()].find((candidate) =>
+          candidate.target === client.identity &&
+          (candidate.status === "queued" || (candidate.status === "working" && candidate.leaseExpiresAt <= now)),
+        );
+        if (!item) {
+          response.writeHead(204, { "cache-control": "no-store" });
+          response.end();
+          return;
+        }
+        item.status = "working";
+        item.leaseId = randomUUID();
+        item.leaseExpiresAt = now + 180_000;
+        sendJson(response, 200, {
+          id: item.id,
+          from: item.requester,
+          to: item.target,
+          input: item.input,
+          conversation_id: item.conversationId,
+          lease_id: item.leaseId,
+        });
+        return;
+      }
+
+      const completionMatch = request.method === "POST" && url.pathname.match(/^\/v1\/inbox\/([0-9a-f-]+)\/complete$/i);
+      if (completionMatch) {
+        let body;
+        try {
+          body = await readJson(request);
+        } catch {
+          sendError(response, 400, "invalid_json", "Body must be valid JSON");
+          return;
+        }
+        const item = pullMessages.get(completionMatch[1]);
+        if (!item || item.target !== client.identity) {
+          sendError(response, 404, "message_not_found", "Message is unknown or belongs to another agent");
+          return;
+        }
+        if (item.status !== "working" || body?.lease_id !== item.leaseId) {
+          sendError(response, 409, "stale_lease", "The delivery lease is no longer current");
+          return;
+        }
+        const status = body?.status;
+        const output = body?.output;
+        if (!new Set(["completed", "failed", "rejected"]).has(status) || (output !== undefined && typeof output !== "string")) {
+          sendError(response, 400, "invalid_result", "status or output is invalid");
+          return;
+        }
+        item.status = status;
+        item.output = output;
+        delete item.leaseId;
+        delete item.leaseExpiresAt;
+        pullPresence.set(client.identity, Date.now());
+        sendJson(response, 200, { ok: true });
         return;
       }
 
@@ -210,6 +284,20 @@ export function createCouncilServer(config) {
         }
 
         const id = randomUUID();
+        if (agent.delivery === "pull") {
+          pullMessages.set(id, {
+            id,
+            requester: client.identity,
+            target: whom,
+            input,
+            conversationId,
+            status: "queued",
+            createdAt: Date.now(),
+          });
+          sendJson(response, 202, { id, from: whom, to: client.identity, status: "working" });
+          return;
+        }
+
         try {
           const task = await sendMessage(agent, {
             input,
@@ -234,6 +322,23 @@ export function createCouncilServer(config) {
       const messageMatch = request.method === "GET" && url.pathname.match(/^\/v1\/messages\/([0-9a-f-]+)$/i);
       if (messageMatch) {
         const id = messageMatch[1];
+        const pullItem = pullMessages.get(id);
+        if (pullItem) {
+          if (pullItem.requester !== client.identity) {
+            sendError(response, 404, "message_not_found", "Message is unknown or belongs to another client");
+            return;
+          }
+          const terminal = pullItem.status !== "queued" && pullItem.status !== "working";
+          sendJson(response, 200, {
+            id,
+            from: pullItem.target,
+            to: pullItem.requester,
+            status: terminal ? pullItem.status : "working",
+            ...(pullItem.output ? { output: pullItem.output } : {}),
+          });
+          if (terminal) pullMessages.delete(id);
+          return;
+        }
         const item = pending.get(id);
         if (!item || item.to !== client.identity) {
           sendError(response, 404, "message_not_found", "Message is unknown or no longer pending");

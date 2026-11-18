@@ -63,15 +63,11 @@ async function main() {
   const hub = option("--hub")?.replace(/\/+$/, "");
   const inviteKey = option("--invite");
   const identity = option("--identity");
-  const advertisedUrl = option("--advertised-url")?.replace(/\/+$/, "");
-  if (!hub || !inviteKey || !identity || !advertisedUrl) {
-    fail("Usage: npm run join -- --hub https://hub.example --invite cci_... --identity agent@host --advertised-url https://openclaw.example");
+  if (!hub || !inviteKey || !identity) {
+    fail("Usage: npm run join -- --hub https://hub.example --invite cci_... --identity agent@host");
   }
   if (!identityPattern.test(identity)) fail("identity must look like agent@host");
-  for (const [label, value] of [["hub", hub], ["advertised-url", advertisedUrl]]) {
-    const parsed = new URL(value);
-    if (parsed.protocol !== "https:") fail(`${label} must use HTTPS`);
-  }
+  if (new URL(hub).protocol !== "https:") fail("hub must use HTTPS");
   if (!inviteKey.startsWith("cci_")) fail("invite key has an invalid format");
 
   const openclawBinary = command("sh", ["-c", "command -v openclaw"], { quiet: true });
@@ -99,13 +95,6 @@ async function main() {
 
   const currentCouncilAgent = readJsonConfig(openclawBinary, "agents.entries.council", null);
   if (currentCouncilAgent) fail("OpenClaw agent id 'council' already exists");
-  const bindings = readJsonConfig(openclawBinary, "bindings", []);
-  const a2a = readJsonConfig(openclawBinary, "channels.a2a", {});
-  const exposeAgents = [...new Set([...(a2a.exposeAgents ?? []), "council"])];
-  const nextBindings = [...bindings, {
-    agentId: "council",
-    match: { channel: "a2a", peer: { kind: "direct", id: "claw-council" } },
-  }];
   const patch = {
     agents: {
       entries: {
@@ -129,18 +118,6 @@ async function main() {
         },
       },
     },
-    bindings: nextBindings,
-    channels: {
-      a2a: {
-        enabled: true,
-        advertisedUrl,
-        exposeAgents,
-        peers: {
-          ...(a2a.peers ?? {}),
-          "claw-council": { token: "${COUNCIL_A2A_TOKEN}" },
-        },
-      },
-    },
     plugins: {
       entries: {
         "claw-council": {
@@ -149,6 +126,8 @@ async function main() {
             baseUrl: hub,
             token: "${COUNCIL_API_TOKEN}",
             timeoutMs: 130000,
+            localAgentId: "council",
+            pollIntervalMs: 2000,
           },
         },
       },
@@ -164,17 +143,16 @@ async function main() {
     body: JSON.stringify({
       invite_key: inviteKey,
       identity,
-      a2a_url: `${advertisedUrl}/a2a/v1`,
     }),
     signal: AbortSignal.timeout(30_000),
     redirect: "error",
   });
   const joined = await joinResponse.json().catch(() => ({}));
   if (!joinResponse.ok) fail(joined.error?.message ?? `Council join returned HTTP ${joinResponse.status}`);
-  if (typeof joined.api_token !== "string" || typeof joined.a2a_token !== "string") fail("Council join returned incomplete credentials");
+  if (typeof joined.api_token !== "string" || joined.delivery !== "pull") fail("Council join returned incomplete credentials");
 
   await mkdir(dirname(environmentFile), { recursive: true, mode: 0o700 });
-  await writeFile(environmentFile, `COUNCIL_API_TOKEN=${joined.api_token}\nCOUNCIL_A2A_TOKEN=${joined.a2a_token}\n`, { mode: 0o600, flag: "wx" });
+  await writeFile(environmentFile, `COUNCIL_API_TOKEN=${joined.api_token}\n`, { mode: 0o600, flag: "wx" });
   await chmod(environmentFile, 0o600);
   await mkdir(dirname(dropIn), { recursive: true, mode: 0o700 });
   await writeFile(dropIn, `[Service]\nEnvironmentFile=${environmentFile}\n`, { mode: 0o600, flag: "wx" });
@@ -186,7 +164,6 @@ async function main() {
   const childEnv = {
     ...process.env,
     COUNCIL_API_TOKEN: joined.api_token,
-    COUNCIL_A2A_TOKEN: joined.a2a_token,
   };
   command(openclawBinary, ["config", "patch", "--stdin"], { input: patchText, env: childEnv, quiet: true });
   command(openclawBinary, ["config", "validate"], { env: childEnv, quiet: true });

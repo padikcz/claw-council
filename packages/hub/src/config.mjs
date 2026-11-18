@@ -46,12 +46,21 @@ export function resolveConfig(raw, env = process.env) {
     if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
       throw new Error(`Agent ${identity} must be an object`);
     }
+    const delivery = agent.delivery ?? "push";
+    if (delivery !== "push" && delivery !== "pull") {
+      throw new Error(`agents.${identity}.delivery must be push or pull`);
+    }
+    if (delivery === "pull") {
+      agents.set(identity, { identity, delivery });
+      continue;
+    }
     const a2aUrl = assertUrl(agent.a2aUrl, `agents.${identity}.a2aUrl`);
     const healthUrl = agent.healthUrl
       ? assertUrl(agent.healthUrl, `agents.${identity}.healthUrl`)
       : new URL("/.well-known/agent-card.json", a2aUrl).toString();
     agents.set(identity, {
       identity,
+      delivery,
       a2aUrl,
       healthUrl,
       token: requiredEnv(agent.tokenEnv, env),

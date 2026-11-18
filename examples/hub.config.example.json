@@ -8,12 +8,10 @@
   "onlineTimeoutMs": 2500,
   "agents": {
     "yui@padik": {
-      "a2aUrl": "https://yui.example.cz/a2a/v1",
-      "tokenEnv": "COUNCIL_A2A_YUI_TOKEN"
+      "delivery": "pull"
     },
     "kira@friend": {
-      "a2aUrl": "https://kira.example.cz/a2a/v1",
-      "tokenEnv": "COUNCIL_A2A_KIRA_TOKEN"
+      "delivery": "pull"
     }
   },
   "clients": {

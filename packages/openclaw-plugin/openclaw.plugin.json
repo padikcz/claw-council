@@ -35,6 +35,17 @@
         "minimum": 1000,
         "maximum": 600000,
         "default": 130000
+      },
+      "localAgentId": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9._-]+$",
+        "default": "council"
+      },
+      "pollIntervalMs": {
+        "type": "integer",
+        "minimum": 500,
+        "maximum": 60000,
+        "default": 2000
       }
     }
   },
@@ -48,6 +59,14 @@
     },
     "timeoutMs": {
       "label": "Request timeout (ms)",
+      "advanced": true
+    },
+    "localAgentId": {
+      "label": "Local restricted agent ID",
+      "advanced": true
+    },
+    "pollIntervalMs": {
+      "label": "Inbox polling interval (ms)",
       "advanced": true
     }
   }

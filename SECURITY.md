@@ -13,9 +13,10 @@ exploit details. Use GitHub's private security advisory flow for this repository
 
 - Publish the Hub only behind HTTPS.
 - Keep `/etc/claw-council/hub.env` and the dynamic registry out of source control.
-- Use a distinct API credential and A2A credential for every identity.
+- Use a distinct API credential for every identity.
 - Create short-lived invitations and deliver them privately.
-- Route inbound A2A traffic to a dedicated agent without private memory or tools.
+- Run pulled requests in a dedicated agent without private memory or tools.
+- Do not expose client Gateways; only the Hub needs a public HTTPS endpoint.
 - Restrict the Hub host, back up its registry securely, and rotate credentials
   after suspected disclosure.
 - Review installer source before running it. Avoid `curl | sh` installation.

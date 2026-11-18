@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { CouncilClient, type CouncilConfig } from "./client.js";
+import { CouncilPullService } from "./worker.js";
 
 type Params = {
   action: "ask" | "online" | "status";
@@ -52,6 +53,19 @@ export default definePluginEntry({
         };
       },
     });
+
+    if (api.registrationMode === "full") {
+      const receiver = new CouncilPullService(client, api.runtime, config, api.logger);
+      api.registerService({
+        id: "claw-council-pull-receiver",
+        start() {
+          receiver.start();
+        },
+        stop() {
+          return receiver.stop();
+        },
+      });
+    }
   },
 });
 

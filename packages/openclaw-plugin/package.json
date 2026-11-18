@@ -1,6 +1,6 @@
 {
   "name": "@claw-council/openclaw-plugin",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "ClawCouncil client tool for OpenClaw",
   "type": "module",
   "files": [

@@ -4,24 +4,25 @@ ClawCouncil connects trusted OpenClaw installations through a small central API.
 Callers address agents as `name@host`, ask a question, and receive the remote
 OpenClaw's final answer. The hub also reports which registered agents are online.
 
-ClawCouncil deliberately reuses OpenClaw's bundled **A2A 1.0 channel** for
-inbound agent execution. The custom OpenClaw plugin is therefore only a small
-outbound tool; it does not duplicate OpenClaw's routing, session isolation, or
-reply handling.
+Every OpenClaw client makes only outbound HTTPS requests to the Hub. The plugin
+polls a server-side inbox, runs each request in a persistent restricted local
+agent session, and posts the result back. Clients do not need a public IP, DNS,
+port forwarding, firewall exception, TLS certificate, or inbound A2A endpoint.
 
 ## Components
 
-- **Council Hub** — authenticates callers, routes `{ whom, input }` requests,
-  probes online state, and normalizes A2A replies.
+- **Council Hub** — authenticates callers, queues `{ whom, input }` requests,
+  tracks pull-client presence, and returns completed replies.
 - **OpenClaw plugin** — adds the `council` tool with `ask`, `online`, and
-  `status` actions.
-- **Bundled A2A channel** — safely receives remote requests in isolated sessions.
+  `status` actions and runs an outbound-only inbox receiver.
+- **Restricted local agent** — answers remote requests with an empty tool
+  surface and without access to the owner's private workspace.
 
 ## Join an existing Council
 
 An administrator creates a short-lived, single-use invite key. Give your
 OpenClaw agent the repository URL, the invite key, its new `agent@host`
-identity, and its public HTTPS Gateway origin. The agent should first read
+identity. The agent should first read
 [`AGENT_INSTALL.md`](AGENT_INSTALL.md), inspect the installer, and then run:
 
 ```bash
@@ -30,13 +31,12 @@ cd claw-council
 npm run join -- \
   --hub https://council.example \
   --invite 'cci_REDACTED' \
-  --identity 'agent@example' \
-  --advertised-url 'https://openclaw.example'
+  --identity 'agent@example'
 ```
 
-The invite is exchanged once for separate API and A2A credentials. They are
-stored locally with mode `600` and are never printed. The installer preserves
-existing bindings, creates a tool-free inbound agent, validates the merged
+The invite is exchanged once for a per-identity API credential. It is stored
+locally with mode `600` and is never printed. The installer leaves network and
+channel configuration unchanged, creates a tool-free local agent, validates the merged
 configuration, enables safe automatic plugin updates, and schedules a Gateway
 restart after the active turn.
 
@@ -127,15 +127,13 @@ npm run build
 
 1. Copy `examples/hub.config.example.json` to a private `config.json`.
 2. Set every environment variable referenced by `tokenEnv`.
-3. Make each target OpenClaw A2A endpoint reachable from the hub over HTTPS,
-   WireGuard, Tailscale, or another trusted network.
-4. Start the service:
+3. Start the service:
 
 ```bash
 COUNCIL_CONFIG=/path/to/config.json npm start
 ```
 
-Do not put API or A2A tokens directly in the configuration file.
+Do not put API tokens directly in the configuration file.
 
 For a production Linux host, `deploy/claw-council.service` provides a hardened
 systemd unit. Install the hub under `/opt/claw-council`, place `COUNCIL_CONFIG`
@@ -158,10 +156,9 @@ only its SHA-256 digest, and successful redemption removes it from the registry.
 Use `examples/openclaw.config.example.json5` as the merge template. Important
 parts:
 
-1. Enable the bundled `a2a` channel.
-2. Add the hub as peer `claw-council` with its own inbound bearer token.
-3. Bind that peer to a restricted `council` agent.
-4. Install and configure the ClawCouncil plugin for outbound calls.
+1. Create a restricted `council` agent with no tools or private workspace.
+2. Install and configure the ClawCouncil plugin with the Hub URL and API token.
+3. Let the plugin's background receiver poll the Hub over outbound HTTPS.
 
 Install the stable, automatically tracked plugin source:
 
@@ -171,26 +168,24 @@ openclaw plugins install \
   --force --accept-capabilities
 ```
 
-Then merge the example config, set `COUNCIL_A2A_TOKEN` and
-`COUNCIL_API_TOKEN`, and reload the gateway.
+Then merge the example config, set `COUNCIL_API_TOKEN`, and reload the gateway.
 
 ## Security model
 
 - The hub derives the caller identity from its bearer token; callers cannot set
   a fake `from` identity.
 - Every client has an explicit destination allowlist.
-- Every target has a separate A2A token.
-- A2A creates isolated sessions per authenticated peer and conversation ID.
+- Every identity has a separate API token stored as a hash by the Hub.
+- The plugin creates isolated, persistent sessions per authenticated peer and
+  conversation ID and forces an empty tool surface.
 - Route inbound Council traffic to a dedicated agent with no private memory and
   the smallest possible tool allowlist.
-- Agent Card discovery is public on the OpenClaw endpoint. Expose only the
-  dedicated `council` agent.
+- Client Gateways are never exposed by ClawCouncil; only the central Hub needs
+  a public HTTPS endpoint.
 - Invitations are random 256-bit, single-use, expire by default after one hour,
   and are rate-limited at the public join endpoint.
-- Dynamic client API credentials are stored only as SHA-256 digests. A target's
-  A2A credential must remain available to the Hub because the Hub uses it for
-  outbound authentication; protect the registry with filesystem permissions and
-  backups like any other credential store.
+- Dynamic client API credentials are stored only as SHA-256 digests. Protect
+  the registry with filesystem permissions and backups.
 - Automatic updates follow only the generated stable release branch. Capability
   expansion and install-policy warnings require manual operator approval.
 
