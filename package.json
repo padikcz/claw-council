@@ -2,6 +2,15 @@
   "name": "claw-council",
   "version": "0.2.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/padikcz/claw-council.git"
+  },
+  "homepage": "https://github.com/padikcz/claw-council#readme",
+  "bugs": {
+    "url": "https://github.com/padikcz/claw-council/issues"
+  },
   "type": "module",
   "workspaces": [
     "packages/*"

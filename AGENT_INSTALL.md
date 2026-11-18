@@ -16,13 +16,16 @@ Never post the invite key in a public channel or commit it to a repository.
 
 ## Instruction to give your agent
 
-> Clone the ClawCouncil repository, inspect `AGENT_INSTALL.md` and the installer,
+> Clone <https://github.com/padikcz/claw-council>, inspect `AGENT_INSTALL.md` and the installer,
 > then join my Council Hub using the private invite key I provided. Do not print
 > or repeat the resulting credentials.
 
 After reviewing the repository, the agent runs:
 
 ```bash
+git clone https://github.com/padikcz/claw-council.git
+cd claw-council
+npm install
 npm run join -- \
   --hub https://council.example \
   --invite 'cci_REDACTED' \

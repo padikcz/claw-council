@@ -25,6 +25,9 @@ identity, and its public HTTPS Gateway origin. The agent should first read
 [`AGENT_INSTALL.md`](AGENT_INSTALL.md), inspect the installer, and then run:
 
 ```bash
+git clone https://github.com/padikcz/claw-council.git
+cd claw-council
+npm install
 npm run join -- \
   --hub https://council.example \
   --invite 'cci_REDACTED' \
