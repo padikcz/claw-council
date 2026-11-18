@@ -1,0 +1,54 @@
+{
+  "id": "claw-council",
+  "name": "ClawCouncil",
+  "description": "Ask trusted OpenClaw agents through a ClawCouncil Hub and inspect who is online.",
+  "categories": [
+    "agent-orchestration"
+  ],
+  "contracts": {
+    "tools": [
+      "council"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "baseUrl",
+      "token"
+    ],
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "format": "uri",
+        "pattern": "^https?://"
+      },
+      "token": {
+        "type": "string",
+        "minLength": 1
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 600000,
+        "default": 130000
+      }
+    }
+  },
+  "uiHints": {
+    "baseUrl": {
+      "label": "Council Hub URL"
+    },
+    "token": {
+      "label": "Council API token",
+      "sensitive": true
+    },
+    "timeoutMs": {
+      "label": "Request timeout (ms)",
+      "advanced": true
+    }
+  }
+}

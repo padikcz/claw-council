@@ -1,0 +1,33 @@
+{
+  "listen": {
+    "host": "127.0.0.1",
+    "port": 8787
+  },
+  "publicBaseUrl": "https://council.example.cz",
+  "registryPath": "/var/lib/claw-council/registry.json",
+  "onlineTimeoutMs": 2500,
+  "agents": {
+    "yui@padik": {
+      "a2aUrl": "https://yui.example.cz/a2a/v1",
+      "tokenEnv": "COUNCIL_A2A_YUI_TOKEN"
+    },
+    "kira@friend": {
+      "a2aUrl": "https://kira.example.cz/a2a/v1",
+      "tokenEnv": "COUNCIL_A2A_KIRA_TOKEN"
+    }
+  },
+  "clients": {
+    "yui@padik": {
+      "tokenEnv": "COUNCIL_API_YUI_TOKEN",
+      "allow": [
+        "kira@friend"
+      ]
+    },
+    "kira@friend": {
+      "tokenEnv": "COUNCIL_API_KIRA_TOKEN",
+      "allow": [
+        "yui@padik"
+      ]
+    }
+  }
+}

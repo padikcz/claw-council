@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tgz
+.env
+config.json
+coverage/
+deploy/*.production.*
+deploy/live-verification.json
+deploy/verify-after-restart.sh

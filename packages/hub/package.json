@@ -1,0 +1,17 @@
+{
+  "name": "@claw-council/hub",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "claw-council-hub": "./src/cli.mjs",
+    "claw-council-admin": "./src/admin.mjs"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24.16"
+  }
+}
